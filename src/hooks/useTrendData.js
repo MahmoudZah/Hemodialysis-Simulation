@@ -19,8 +19,6 @@ const TRACKED_KEYS = [
   { key: 'dialyzerInPressure', label: 'Dialyzer In',        unit: 'mmHg',   color: '#38bdf8', min: 0,    max: 500  },
   { key: 'venousPressure',     label: 'Venous Pressure',    unit: 'mmHg',   color: '#34d399', min: 0,    max: 350  },
   { key: 'dialysateTemp',      label: 'Dialysate Temp',     unit: '°C',     color: '#fbbf24', min: 34,   max: 44   },
-  { key: 'hematocrit',         label: 'Hematocrit',         unit: '%',      color: '#fb923c', min: 25,   max: 55   },
-  { key: 'bloodViscosity',     label: 'Blood Viscosity',    unit: 'cP',     color: '#e879f9', min: 2,    max: 5    },
 ]
 
 export { TRACKED_KEYS }
