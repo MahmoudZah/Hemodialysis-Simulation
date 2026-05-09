@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useDialysisState } from './hooks/useDialysisState.js'
 import MachineCanvas from './components/MachineCanvas.jsx'
 import SafetySensors from './components/SafetySensors.jsx'
 import ControlDashboard from './components/ControlDashboard.jsx'
+import LearnMoreModal from './components/LearnMoreModal.jsx'
 
 /**
  * App.jsx -- Source of Truth for the Hemodialysis Simulation.
@@ -25,6 +27,8 @@ export default function App() {
     alarmActive,
   } = useDialysisState()
 
+  const [learnMoreTarget, setLearnMoreTarget] = useState(null)
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-med-bg text-white">
       {/* 3D scene -- blood-related state flows from the source-of-truth hook. */}
@@ -36,6 +40,7 @@ export default function App() {
         triggerLeak={triggerLeak}
         isAirDetected={state.isAirDetected}
         triggerAir={triggerAir}
+        onLearnMore={setLearnMoreTarget}
       />
 
       {/* Non-visual safety/telemetry observer. */}
@@ -59,6 +64,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Educational "Learn More" modal */}
+      <LearnMoreModal
+        componentId={learnMoreTarget}
+        onClose={() => setLearnMoreTarget(null)}
+      />
     </div>
   )
 }

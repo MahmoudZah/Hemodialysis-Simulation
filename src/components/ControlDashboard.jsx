@@ -89,10 +89,6 @@ export default function ControlDashboard({
             label="Dialysate Temp"
             value={`${state.dialysateTemp.toFixed(1)} °C`}
           />
-          <Readout
-            label="Venous Pressure"
-            value={`${state.venousPressure} mmHg`}
-          />
         </Panel>
 
         {/* Blood physical parameters (patient side) */}
@@ -105,10 +101,6 @@ export default function ControlDashboard({
           <Readout
             label="Viscosity"
             value={`${state.bloodViscosity.toFixed(2)} cP`}
-          />
-          <Readout
-            label="Blood Temp"
-            value={`${state.bloodTemp.toFixed(1)} °C`}
           />
           <Readout
             label="Total Volume"
@@ -131,20 +123,11 @@ export default function ControlDashboard({
           <Slider
             label="Dialysate Temp"
             min={34}
-            max={40}
+            max={44}
             step={0.1}
             value={state.dialysateTemp}
             onChange={(v) => setParam('dialysateTemp', Number(v.toFixed(1)))}
             unit="°C"
-          />
-          <Slider
-            label="Venous Pressure"
-            min={50}
-            max={300}
-            step={1}
-            value={state.venousPressure}
-            onChange={(v) => setParam('venousPressure', v)}
-            unit="mmHg"
           />
           <Slider
             label="Hematocrit"
@@ -163,35 +146,24 @@ export default function ControlDashboard({
             }}
             unit="%"
           />
-          <Slider
-            label="Blood Temp"
-            min={34}
-            max={39}
-            step={0.1}
-            value={state.bloodTemp}
-            onChange={(v) => setParam('bloodTemp', Number(v.toFixed(1)))}
-            unit="°C"
-          />
         </Panel>
 
         {/* Test triggers */}
-        <Panel title="TEST TRIGGERS (DEMO)">
+        <Panel title="TEST TRIGGERS">
           <TriggerButton
             label="Trigger Air Detection"
             active={state.isAirDetected}
             onClick={triggerAir}
-            hint="…or click the air-detector clamp to inject an air bolus"
           />
           <TriggerButton
             label="Trigger Blood Leak"
             active={state.isLeakDetected}
             onClick={triggerLeak}
-            hint="…or click the dialyzer to simulate a membrane rupture"
           />
           <TriggerButton
-            label="Force Temp Fault (40 °C)"
-            active={state.dialysateTemp > 38 || state.dialysateTemp < 35.5}
-            onClick={() => setParam('dialysateTemp', 40.0)}
+            label="Force Temp Fault (43 °C)"
+            active={state.dialysateTemp >= 42 || state.dialysateTemp <= 35}
+            onClick={() => setParam('dialysateTemp', 43.0)}
           />
         </Panel>
       </div>
@@ -203,23 +175,23 @@ export default function ControlDashboard({
 
 function Panel({ title, children }) {
   return (
-    <div className="rounded-2xl border border-white/5 bg-med-panel/85 p-4 shadow-xl backdrop-blur">
-      <div className="mb-3 text-xs font-bold tracking-[0.2em] text-med-accent">
+    <div className="rounded-2xl border border-white/5 bg-med-panel/85 p-3 shadow-xl backdrop-blur">
+      <div className="mb-2 text-[10px] font-bold tracking-[0.2em] text-med-accent">
         {title}
       </div>
-      <div className="flex flex-col gap-3">{children}</div>
+      <div className="flex flex-col gap-2">{children}</div>
     </div>
   )
 }
 
 function Readout({ label, value, sub, subColor = 'text-white/70' }) {
   return (
-    <div className="flex items-center justify-between rounded-md bg-black/25 px-3 py-2">
-      <span className="text-xs uppercase text-white/60">{label}</span>
+    <div className="flex items-center justify-between rounded-md bg-black/25 px-2 py-1.5">
+      <span className="text-[10px] uppercase text-white/60">{label}</span>
       <div className="text-right">
-        <span className="font-mono text-base text-white">{value}</span>
+        <span className="font-mono text-sm text-white">{value}</span>
         {sub && (
-          <div className={`text-[10px] font-bold tracking-wider ${subColor}`}>
+          <div className={`text-[9px] font-bold tracking-wider ${subColor}`}>
             {sub}
           </div>
         )}
@@ -231,7 +203,7 @@ function Readout({ label, value, sub, subColor = 'text-white/70' }) {
 function Slider({ label, min, max, step, value, onChange, unit, disabled }) {
   return (
     <label className={`block ${disabled ? 'opacity-50' : ''}`}>
-      <div className="mb-1 flex items-center justify-between text-xs text-white/70">
+      <div className="mb-0.5 flex items-center justify-between text-[10px] text-white/70">
         <span>{label}</span>
         <span className="font-mono text-white">
           {typeof value === 'number' ? value : ''} {unit}
@@ -251,23 +223,18 @@ function Slider({ label, min, max, step, value, onChange, unit, disabled }) {
   )
 }
 
-function TriggerButton({ label, onClick, active, hint }) {
+function TriggerButton({ label, onClick, active }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-start rounded-lg px-3 py-2 text-sm font-semibold transition ${
+      className={`rounded-lg px-2 py-1.5 text-xs font-semibold transition ${
         active
           ? 'bg-med-crit text-white shadow-inner'
           : 'bg-white/10 text-white hover:bg-white/20'
       }`}
     >
-      <span>{label}</span>
-      {hint && (
-        <span className="text-[10px] font-normal tracking-wide text-white/60">
-          {hint}
-        </span>
-      )}
+      {label}
     </button>
   )
 }

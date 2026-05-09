@@ -1,5 +1,6 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
 /**
@@ -50,7 +51,10 @@ export default function AirTrap({
   position = [0, 0, 0],
   active = false,
   flowRate = 0,
+  onLearnMore,
 }) {
+  const [hovered, setHovered] = useState(false)
+  const hoverTimeoutRef = useRef(null)
   const bubbles = useRef(
     Array.from({ length: N_BUBBLES }, () => ({
       pos: new THREE.Vector3(),
@@ -112,8 +116,24 @@ export default function AirTrap({
     }
   })
 
+  const hoverEvents = {
+    onPointerOver: (e) => {
+      e.stopPropagation()
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+      setHovered(true)
+      document.body.style.cursor = 'pointer'
+    },
+    onPointerOut: (e) => {
+      e.stopPropagation()
+      document.body.style.cursor = 'auto'
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHovered(false)
+      }, 400)
+    },
+  }
+
   return (
-    <group position={position}>
+    <group position={position} {...hoverEvents}>
       {/* ===== End caps ===== */}
       <mesh position={[0, HEIGHT / 2 + CAP_HEIGHT / 2, 0]} castShadow>
         <cylinderGeometry args={[CAP_RADIUS, CAP_RADIUS, CAP_HEIGHT, 24]} />
@@ -213,6 +233,32 @@ export default function AirTrap({
         radius={0.04}
         color="#7f1d1d"
       />
+
+      {/* ===== Floating "Learn More" button on hover ===== */}
+      {hovered && (
+        <Html
+          position={[0, HEIGHT / 2 + 0.45, 0.25]}
+          center
+          distanceFactor={6}
+          style={{ pointerEvents: 'auto' }}
+        >
+          <button
+            onPointerEnter={() => {
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+            }}
+            onPointerLeave={() => {
+              hoverTimeoutRef.current = setTimeout(() => setHovered(false), 400)
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onLearnMore?.('airTrap')
+            }}
+            className="whitespace-nowrap rounded-full bg-med-accent/90 px-3 py-1.5 text-xs font-bold text-slate-900 shadow-lg backdrop-blur transition hover:bg-med-accent hover:scale-105"
+          >
+            Learn More
+          </button>
+        </Html>
+      )}
     </group>
   )
 }

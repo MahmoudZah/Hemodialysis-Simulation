@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
 /**
@@ -29,8 +30,10 @@ export default function AirDetectorClamp({
   rotation = [0, 0, 0],
   active = false,
   onTrigger,
+  onLearnMore,
 }) {
   const [hovered, setHovered] = useState(false)
+  const hoverTimeoutRef = useRef(null)
   const ledMatRef = useRef(null)
 
   useFrame((state) => {
@@ -50,13 +53,16 @@ export default function AirDetectorClamp({
   const events = {
     onPointerOver: (e) => {
       e.stopPropagation()
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
       setHovered(true)
       document.body.style.cursor = 'pointer'
     },
     onPointerOut: (e) => {
       e.stopPropagation()
-      setHovered(false)
       document.body.style.cursor = 'auto'
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHovered(false)
+      }, 400)
     },
     onClick: (e) => {
       e.stopPropagation()
@@ -143,6 +149,32 @@ export default function AirDetectorClamp({
 
       {/* ===== Active alarm pulse ring ===== */}
       {active && <AlarmRing />}
+
+      {/* ===== Floating "Learn More" button on hover ===== */}
+      {hovered && (
+        <Html
+          position={[0, BODY_H + TUBE_GAP / 2 + 0.15, 0]}
+          center
+          distanceFactor={6}
+          style={{ pointerEvents: 'auto' }}
+        >
+          <button
+            onPointerEnter={() => {
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+            }}
+            onPointerLeave={() => {
+              hoverTimeoutRef.current = setTimeout(() => setHovered(false), 400)
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onLearnMore?.('airDetectorClamp')
+            }}
+            className="whitespace-nowrap rounded-full bg-med-accent/90 px-3 py-1.5 text-xs font-bold text-slate-900 shadow-lg backdrop-blur transition hover:bg-med-accent hover:scale-105"
+          >
+            Learn More
+          </button>
+        </Html>
+      )}
     </group>
   )
 }

@@ -117,6 +117,7 @@ export default function MachineCanvas({
   triggerLeak,
   isAirDetected = false,
   triggerAir,
+  onLearnMore,
 }) {
   const arterialPort = arterialPortWorld(HAND_POSITION)
   const venousPort = venousPortWorld(HAND_POSITION)
@@ -232,6 +233,7 @@ export default function MachineCanvas({
         position={DIALYZER_POSITION}
         active={isLeakDetected}
         onPuncture={triggerLeak}
+        onLearnMore={onLearnMore}
       />
 
       {/* ===== Decorative dialysate inflow / outflow tubes =====
@@ -264,6 +266,7 @@ export default function MachineCanvas({
         position={AIR_TRAP_POSITION}
         active={isAirDetected}
         flowRate={bloodFlowRate}
+        onLearnMore={onLearnMore}
       />
 
       {/* ===== INLINE AIR-DETECTOR CLAMP =====
@@ -276,6 +279,7 @@ export default function MachineCanvas({
         rotation={CLAMP_TRANSFORM.rotation}
         active={isAirDetected}
         onTrigger={triggerAir}
+        onLearnMore={onLearnMore}
       />
 
       {/* ===== DIGITAL PRESSURE MONITORS =====

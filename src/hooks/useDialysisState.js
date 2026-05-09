@@ -20,8 +20,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
  * All safety logic is centralized here so every subsystem reacts identically.
  */
 
-export const SAFE_TEMP_MIN = 35.5
-export const SAFE_TEMP_MAX = 38.0
+export const SAFE_TEMP_MIN = 35
+export const SAFE_TEMP_MAX = 42
 
 const DEFAULT_STATE = {
   // Machine parameters

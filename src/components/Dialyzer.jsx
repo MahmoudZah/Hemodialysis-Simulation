@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
 /**
@@ -75,8 +76,10 @@ export default function Dialyzer({
   position = [0, 0, 0],
   active = false,
   onPuncture,
+  onLearnMore,
 }) {
   const [hovered, setHovered] = useState(false)
+  const hoverTimeoutRef = useRef(null)
   const dialysateMatRef = useRef(null)
   const transitionRef = useRef(0) // 0 = clean cyan, 1 = bloody pink
 
@@ -105,13 +108,16 @@ export default function Dialyzer({
   const events = {
     onPointerOver: (e) => {
       e.stopPropagation()
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
       setHovered(true)
       document.body.style.cursor = 'pointer'
     },
     onPointerOut: (e) => {
       e.stopPropagation()
-      setHovered(false)
       document.body.style.cursor = 'auto'
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHovered(false)
+      }, 400)
     },
     onClick: (e) => {
       e.stopPropagation()
@@ -247,6 +253,32 @@ export default function Dialyzer({
 
       {/* ===== Active leak indicator (pulsing red ring) ===== */}
       {active && <LeakRing radius={CAP_RADIUS + 0.05} />}
+
+      {/* ===== Floating "Learn More" button on hover ===== */}
+      {hovered && (
+        <Html
+          position={[0, HEIGHT / 2 + 0.55, 0.35]}
+          center
+          distanceFactor={6}
+          style={{ pointerEvents: 'auto' }}
+        >
+          <button
+            onPointerEnter={() => {
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+            }}
+            onPointerLeave={() => {
+              hoverTimeoutRef.current = setTimeout(() => setHovered(false), 400)
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onLearnMore?.('dialyzer')
+            }}
+            className="whitespace-nowrap rounded-full bg-med-accent/90 px-3 py-1.5 text-xs font-bold text-slate-900 shadow-lg backdrop-blur transition hover:bg-med-accent hover:scale-105"
+          >
+            Learn More
+          </button>
+        </Html>
+      )}
     </group>
   )
 }
