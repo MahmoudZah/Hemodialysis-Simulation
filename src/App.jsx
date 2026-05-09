@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useDialysisState } from './hooks/useDialysisState.js'
+import { useTrendData } from './hooks/useTrendData.js'
 import MachineCanvas from './components/MachineCanvas.jsx'
 import SafetySensors from './components/SafetySensors.jsx'
 import ControlDashboard from './components/ControlDashboard.jsx'
 import LearnMoreModal from './components/LearnMoreModal.jsx'
+import TrendPanel from './components/TrendPanel.jsx'
 
 /**
  * App.jsx -- Source of Truth for the Hemodialysis Simulation.
@@ -28,6 +30,39 @@ export default function App() {
   } = useDialysisState()
 
   const [learnMoreTarget, setLearnMoreTarget] = useState(null)
+
+  // ---- Derived pressures (same formulas as MachineCanvas) ----------------
+  // Computed here so the trend recorder can sample them without reaching
+  // into the 3D layer.
+  const flowRatio = state.bloodFlowRate / 300
+  const viscRatio = state.bloodViscosity / 3.5
+  const arterialPressure = -100 - flowRatio * viscRatio * 100
+  const dialyzerInPressure = 50 + flowRatio * viscRatio * 200
+  const venousPressure = 50 + flowRatio * viscRatio * 100
+
+  // ---- Trend data recorder -----------------------------------------------
+  const sampleFn = useCallback(
+    () => ({
+      bloodFlowRate: state.bloodFlowRate,
+      arterialPressure: Math.round(arterialPressure),
+      dialyzerInPressure: Math.round(dialyzerInPressure),
+      venousPressure: Math.round(venousPressure),
+      dialysateTemp: state.dialysateTemp,
+      hematocrit: state.hematocrit,
+      bloodViscosity: state.bloodViscosity,
+    }),
+    [
+      state.bloodFlowRate,
+      arterialPressure,
+      dialyzerInPressure,
+      venousPressure,
+      state.dialysateTemp,
+      state.hematocrit,
+      state.bloodViscosity,
+    ],
+  )
+
+  const { history } = useTrendData(sampleFn)
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-med-bg text-white">
@@ -54,6 +89,9 @@ export default function App() {
         triggerLeak={triggerLeak}
         resetAlarms={resetAlarms}
       />
+
+      {/* Live trend graphs panel (left sidebar, toggleable). */}
+      <TrendPanel history={history} />
 
       {/* Global red pulsing overlay -- only when system is CRITICAL. */}
       {alarmActive && (
