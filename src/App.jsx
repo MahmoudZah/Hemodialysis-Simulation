@@ -24,6 +24,7 @@ export default function App() {
     triggerAir,
     confirmAirAlarm,
     triggerLeak,
+    confirmLeakAlarm,
     toggleClamp,
     resetAlarms,
     toggleMute,
@@ -77,6 +78,7 @@ export default function App() {
         bloodFlowRate={state.bloodFlowRate}
         hematocrit={state.hematocrit}
         bloodViscosity={state.bloodViscosity}
+        isMembraneLeaking={state.isMembraneLeaking}
         isLeakDetected={state.isLeakDetected}
         triggerLeak={triggerLeak}
         isClamped={state.isClamped}
@@ -86,6 +88,7 @@ export default function App() {
         isBubbleActive={state.isBubbleActive}
         triggerAir={triggerAir}
         confirmAirAlarm={confirmAirAlarm}
+        confirmLeakAlarm={confirmLeakAlarm}
         onLearnMore={setLearnMoreTarget}
         chemistry={state.chemistry}
         alarmActive={alarmActive}

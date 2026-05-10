@@ -82,6 +82,29 @@ const CONTENT = {
       },
     ],
   },
+
+  bloodLeakDetector: {
+    title: 'Blood Leak Detector',
+    image: dialyzerImg,
+    sections: [
+      {
+        heading: 'What is it?',
+        body: 'The blood leak detector is placed on the spent dialysate line after the dialyzer. It watches the dialysate leaving the filter for any sign of red blood cells.',
+      },
+      {
+        heading: 'What sensor is used?',
+        body: 'Real hemodialysis machines usually use an optical detector: a light source such as an LED shines through the dialysate path and a photodiode or phototransistor measures transmitted light. It is more reliable than a simple LDR for this job.',
+      },
+      {
+        heading: 'How does it detect a leak?',
+        body: 'Normally the outgoing dialysate is clear or lightly colored. If the membrane ruptures, blood crosses into the dialysate, the fluid turns pink or red, and the optical sensor sees a change in light absorption.',
+      },
+      {
+        heading: 'Safety response',
+        body: 'Once blood is detected in the dialysate, the machine stops the blood pump, raises a critical blood-leak alarm, and the dialyzer must be replaced before treatment can continue.',
+      },
+    ],
+  },
 }
 
 export default function LearnMoreModal({ componentId, onClose }) {

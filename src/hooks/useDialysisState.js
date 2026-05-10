@@ -16,6 +16,7 @@ const DEFAULT_STATE = {
   dialysateTemp: 37.0,
   venousPressure: 150,
   isAirDetected: false,
+  isMembraneLeaking: false,
   isLeakDetected: false,
   isOccluded: false,       // NEW: flow-sensor occlusion alarm
   isBubbleActive: false,
@@ -66,7 +67,20 @@ export function useDialysisState() {
   }, [])
 
   const triggerLeak = useCallback(() => {
-    setState((prev) => ({ ...prev, isLeakDetected: true }))
+    setState((prev) => ({
+      ...prev,
+      isMembraneLeaking: true,
+      isLeakDetected: false,
+      isAlarmSilenced: false,
+    }))
+  }, [])
+
+  const confirmLeakAlarm = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      isMembraneLeaking: true,
+      isLeakDetected: true,
+    }))
   }, [])
 
   const toggleClamp = useCallback(() => {
@@ -77,6 +91,7 @@ export function useDialysisState() {
     setState((prev) => ({
       ...prev,
       isAirDetected: false,
+      isMembraneLeaking: false,
       isLeakDetected: false,
       isOccluded: false,
       isBubbleActive: false,
@@ -190,6 +205,7 @@ export function useDialysisState() {
     triggerAir,
     confirmAirAlarm,
     triggerLeak,
+    confirmLeakAlarm,
     toggleClamp,
     resetAlarms,
     toggleMute,

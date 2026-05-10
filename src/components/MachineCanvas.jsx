@@ -51,15 +51,11 @@ const HAND_POSITION = [3.6, -0.5, 1]
 // Cabinet front face is at z = -0.85. Everything mounted on the cabinet
 // has its BACK at that plane. The pump head is small (~0.4 of its old
 // size) so its back face touches the cabinet and the rotor protrudes
-// forward into the room. The dialyzer (cap radius 0.32) and air-trap
-// (cap radius 0.18) are positioned so their back edges land on z=-0.85
-// too, giving a clean panel-mounted look.
+// forward into the room. The dialyzer is the main exchange cartridge and
+// sits flush on the cabinet face.
 const CABINET_FRONT_Z = -0.85
 const PUMP_POSITION = [-0.7, -0.6, CABINET_FRONT_Z + 0.10]   // -0.75; back at cabinet
 const DIALYZER_POSITION = [0.4, -0.3, CABINET_FRONT_Z + 0.32] // -0.53
-// Pulled INWARD (x=1.1, not 1.5) so the air-trap cap (radius 0.18) clears
-// the cabinet's right side bezel at x~1.55. Otherwise the bezel would
-// poke through the transparent air-trap shell.
 const AIR_TRAP_POSITION = [1.1, -0.3, CABINET_FRONT_Z + 0.18] // -0.67
 
 // Pump inlet/outlet/loop centre in WORLD coordinates, derived from the
@@ -127,10 +123,14 @@ const ARTERIAL_PM_POSITION = [-1.0, PM_ROW_Y, PM_ROW_Z]    // above pump head
 const DIALYZER_INFLOW_PM_POSITION = [-0.05, PM_ROW_Y, PM_ROW_Z] // above dialyzer
 const VENOUS_PM_POSITION = [0.95, PM_ROW_Y, PM_ROW_Z]      // above air trap
 
+const DIALYSATE_SOURCE_POSITION = [-1.25, -1.28, CABINET_FRONT_Z + 0.38]
+const DIALYSATE_DRAIN_POSITION = [-1.25, 0.92, CABINET_FRONT_Z + 0.38]
+
 export default function MachineCanvas({
   bloodFlowRate = 0,
   hematocrit = 42,
   bloodViscosity = 3.5,
+  isMembraneLeaking = false,
   isLeakDetected = false,
   triggerLeak,
   isClamped = false,
@@ -140,6 +140,7 @@ export default function MachineCanvas({
   isOccluded = false,
   triggerAir,
   confirmAirAlarm,
+  confirmLeakAlarm,
   onLearnMore,
   chemistry,
   alarmActive = false,
@@ -180,6 +181,12 @@ export default function MachineCanvas({
   const arterialPressure = -100 - flowRatio * viscRatio * 100
   const dialyzerInflowPressure = (isClamped ? 550 : 50) + flowRatio * viscRatio * 200
   const venousPressureLive = (isClamped ? 420 : 50) + flowRatio * viscRatio * 100
+  const dialysateFlowRate = bloodFlowRate > 0
+    ? Math.min(800, Math.max(500, bloodFlowRate * 2))
+    : 0
+  const clearanceMix = chemistry
+    ? THREE.MathUtils.clamp((100 - chemistry.urea) / 70, 0, 1)
+    : 0
 
   const circuitPath = useMemo(
     () =>
@@ -255,30 +262,35 @@ export default function MachineCanvas({
       <group>
         <Dialyzer
           position={DIALYZER_POSITION}
-          active={isLeakDetected}
+          active={isMembraneLeaking || isLeakDetected}
+          bloodFlowRate={bloodFlowRate}
+          dialysateFlowRate={dialysateFlowRate}
+          wasteMix={clearanceMix}
           onPuncture={triggerLeak}
           onLearnMore={onLearnMore}
         />
-        <ComponentCard 
+        <ComponentCard
           position={[DIALYZER_POSITION[0], DIALYZER_POSITION[1] + 0.8, DIALYZER_POSITION[2]]}
           title="Dialyzer (Artificial Kidney)"
           description="A bundle of thousands of hollow fibers where blood and dialysate exchange waste products via diffusion."
         />
       </group>
 
-      <DialysateTube
-        from={dialysateIn}
-        to={[DIALYZER_POSITION[0] + 0.55, DIALYZER_POSITION[1] + 0.6, CABINET_FRONT_Z]}
-      />
-      
-      {/* Waste Dialysate Outflow -- Tints amber as urea is removed */}
-      <DialysateTube
-        from={dialysateOut}
-        to={[DIALYZER_POSITION[0] + 0.55, DIALYZER_POSITION[1] - 0.6, CABINET_FRONT_Z]}
-        color={chemistry?.urea < 95 ? "#fde68a" : "#22d3ee"}
-        emissive={chemistry?.urea < 95 ? "#b45309" : "#0e7490"}
+      <DialysateSubsystem
+        dialysateIn={dialysateIn}
+        dialysateOut={dialysateOut}
+        flowRate={dialysateFlowRate}
+        wasteMix={clearanceMix}
+        isMembraneLeaking={isMembraneLeaking}
+        isLeakDetected={isLeakDetected}
+        onLeakDetected={confirmLeakAlarm}
+        onLearnMore={onLearnMore}
       />
 
+      {/* ===== INLINE AIR-DETECTOR CLAMP ===== */}
+
+      {/* ===== FLOW SENSOR (YF-S201 style) ===== */}
+      {/* Placed on the venous return line — detects occlusion when flow drops >50% */}
       {/* ===== AIR TRAP / DRIP CHAMBER ===== */}
       <group>
         <AirTrap
@@ -287,7 +299,7 @@ export default function MachineCanvas({
           flowRate={bloodFlowRate}
           onLearnMore={onLearnMore}
         />
-        <ComponentCard 
+        <ComponentCard
           position={[AIR_TRAP_POSITION[0], AIR_TRAP_POSITION[1] + 0.6, AIR_TRAP_POSITION[2]]}
           title="Air Trap / Drip Chamber"
           description="Removes any air bubbles from the blood return line before it enters the patient."
@@ -303,7 +315,7 @@ export default function MachineCanvas({
           onTrigger={triggerAir}
           onLearnMore={onLearnMore}
         />
-        <ComponentCard 
+        <ComponentCard
           position={[CLAMP_TRANSFORM.position[0], CLAMP_TRANSFORM.position[1] + 0.35, CLAMP_TRANSFORM.position[2]]}
           title="Ultrasonic Air Detector"
           description="A final safety sensor that stops the machine if even a tiny air bubble passes through."
@@ -321,12 +333,12 @@ export default function MachineCanvas({
       />
 
       {/* Animated Air Bubble Bolus */}
-      <AirBubble 
-        path={circuitPath} 
+      <AirBubble
+        path={circuitPath}
         bloodFlowRate={bloodFlowRate}
         isBubbleActive={isBubbleActive}
         isAirDetected={isAirDetected}
-        onDetectorHit={confirmAirAlarm} 
+        onDetectorHit={confirmAirAlarm}
       />
 
       {/* ===== DIGITAL PRESSURE MONITORS =====
@@ -661,6 +673,294 @@ function BedsideTable({ position = [0, 0, 0] }) {
   )
 }
 
+function curveFromPoints(points) {
+  return new THREE.CatmullRomCurve3(
+    points.map((point) => new THREE.Vector3(...point)),
+    false,
+    'centripetal',
+  )
+}
+
+function getTransformOnCurve(curve, t) {
+  const pos = curve.getPoint(t)
+  const tangent = curve.getTangent(t).normalize()
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    tangent,
+  )
+  const euler = new THREE.Euler().setFromQuaternion(quaternion)
+  return {
+    position: pos.toArray(),
+    rotation: [euler.x, euler.y, euler.z],
+  }
+}
+
+function DialysateSubsystem({
+  dialysateIn,
+  dialysateOut,
+  flowRate,
+  wasteMix,
+  isMembraneLeaking,
+  isLeakDetected,
+  onLeakDetected,
+  onLearnMore,
+}) {
+  const freshColor = '#8be9ff'
+  const freshEmissive = '#22d3ee'
+  const spentColor = isMembraneLeaking || isLeakDetected
+    ? '#fb7185'
+    : wasteMix > 0.35
+      ? '#2b7a8a'
+      : '#5eead4'
+  const spentEmissive = isMembraneLeaking || isLeakDetected
+    ? '#be123c'
+    : wasteMix > 0.35
+      ? '#164e63'
+      : '#0f766e'
+
+  const freshSupplyPoints = useMemo(
+    () => ([
+      DIALYSATE_SOURCE_POSITION,
+      [-0.92, -1.18, CABINET_FRONT_Z + 0.28],
+      [-0.46, -1.02, CABINET_FRONT_Z + 0.18],
+      dialysateIn,
+    ]),
+    [dialysateIn],
+  )
+
+  const wasteReturnPoints = useMemo(
+    () => ([
+      dialysateOut,
+      [-0.46, 0.92, CABINET_FRONT_Z + 0.18],
+      [-0.92, 0.86, CABINET_FRONT_Z + 0.28],
+      DIALYSATE_DRAIN_POSITION,
+    ]),
+    [dialysateOut],
+  )
+
+  const wasteCurve = useMemo(
+    () => curveFromPoints(wasteReturnPoints),
+    [wasteReturnPoints],
+  )
+  const detectorT = 0.16
+  const leakSensorTransform = useMemo(
+    () => getTransformOnCurve(wasteCurve, detectorT),
+    [wasteCurve, detectorT],
+  )
+
+  return (
+    <group>
+      <DialysateManifold
+        position={DIALYSATE_SOURCE_POSITION}
+        color={freshColor}
+        emissive={freshEmissive}
+        isActive={flowRate > 0}
+      />
+      <DialysateTube
+        points={freshSupplyPoints}
+        flowRate={flowRate}
+        color={freshColor}
+        emissive={freshEmissive}
+        particleColor="#e0f2fe"
+        radius={0.05}
+        particleRadius={0.019}
+        markers={4}
+        opacity={0.36}
+      />
+      <DialysateManifold
+        position={DIALYSATE_DRAIN_POSITION}
+        color={spentColor}
+        emissive={spentEmissive}
+        isActive={flowRate > 0}
+      />
+      <DialysateTube
+        points={wasteReturnPoints}
+        flowRate={flowRate}
+        color={spentColor}
+        emissive={spentEmissive}
+        particleColor={isMembraneLeaking || isLeakDetected ? '#fecaca' : wasteMix > 0.35 ? '#99f6e4' : '#cffafe'}
+        radius={0.05}
+        particleRadius={0.019}
+        markers={4}
+        opacity={0.5}
+      />
+
+      <BloodLeakSensor
+        position={leakSensorTransform.position}
+        rotation={leakSensorTransform.rotation}
+        active={isLeakDetected}
+        watching={isMembraneLeaking && !isLeakDetected}
+        onLearnMore={onLearnMore}
+      />
+
+      <DialysateLeakBolus
+        path={wasteCurve}
+        flowRate={flowRate}
+        isLeaking={isMembraneLeaking}
+        isDetected={isLeakDetected}
+        detectorT={detectorT}
+        onDetectorHit={onLeakDetected}
+      />
+    </group>
+  )
+}
+
+function DialysateManifold({ position, color, emissive, isActive }) {
+  return (
+    <group position={position}>
+      <mesh castShadow>
+        <boxGeometry args={[0.18, 0.18, 0.14]} />
+        <meshStandardMaterial color="#e2e8f0" metalness={0.22} roughness={0.55} />
+      </mesh>
+      <mesh position={[0.08, 0, 0]}>
+        <cylinderGeometry args={[0.035, 0.035, 0.16, 16]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={emissive}
+          emissiveIntensity={isActive ? 0.85 : 0.12}
+          transparent
+          opacity={0.92}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
+  )
+}
+
+function BloodLeakSensor({
+  position,
+  rotation,
+  active,
+  watching,
+  onLearnMore,
+}) {
+  const ledRef = useRef(null)
+
+  useFrame((state) => {
+    if (!ledRef.current) return
+    const pulse = active
+      ? 1.8 + Math.sin(state.clock.elapsedTime * 8) * 0.9
+      : watching
+        ? 0.65 + Math.sin(state.clock.elapsedTime * 4) * 0.2
+        : 0.18
+    ledRef.current.material.emissiveIntensity = pulse
+  })
+
+  return (
+    <group
+      position={position}
+      rotation={rotation}
+      onClick={(e) => {
+        e.stopPropagation()
+        onLearnMore?.('bloodLeakDetector')
+      }}
+      onPointerOver={() => { document.body.style.cursor = 'pointer' }}
+      onPointerOut={() => { document.body.style.cursor = 'auto' }}
+    >
+      {/* Optical clip body: LED emitter on one side, photodiode receiver opposite. */}
+      <mesh castShadow>
+        <boxGeometry args={[0.13, 0.055, 0.095]} />
+        <meshStandardMaterial color="#111827" metalness={0.3} roughness={0.38} />
+      </mesh>
+
+      {/* Saddle clamp under the tube */}
+      <mesh position={[0, -0.03, 0]}>
+        <boxGeometry args={[0.12, 0.018, 0.085]} />
+        <meshStandardMaterial color="#0f172a" metalness={0.25} roughness={0.42} />
+      </mesh>
+
+      {/* Emitter and receiver jaws that face across the transparent tube */}
+      <mesh position={[0.048, 0.006, 0]} castShadow>
+        <boxGeometry args={[0.024, 0.09, 0.05]} />
+        <meshStandardMaterial color="#d1d5db" metalness={0.55} roughness={0.24} />
+      </mesh>
+      <mesh position={[-0.048, 0.006, 0]} castShadow>
+        <boxGeometry args={[0.024, 0.09, 0.05]} />
+        <meshStandardMaterial color="#d1d5db" metalness={0.55} roughness={0.24} />
+      </mesh>
+
+      {/* Optical windows */}
+      <mesh position={[0.036, 0.006, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <cylinderGeometry args={[0.011, 0.011, 0.012, 16]} />
+        <meshStandardMaterial color="#93c5fd" emissive="#60a5fa" emissiveIntensity={0.35} toneMapped={false} />
+      </mesh>
+      <mesh position={[-0.036, 0.006, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <cylinderGeometry args={[0.011, 0.011, 0.012, 16]} />
+        <meshStandardMaterial color="#cbd5e1" emissive="#94a3b8" emissiveIntensity={0.18} toneMapped={false} />
+      </mesh>
+
+      {/* Top status lamp */}
+      <mesh ref={ledRef} position={[0, 0.048, 0]} castShadow>
+        <cylinderGeometry args={[0.018, 0.018, 0.02, 16]} />
+        <meshStandardMaterial
+          color={active ? '#ef4444' : watching ? '#fbbf24' : '#22c55e'}
+          emissive={active ? '#ef4444' : watching ? '#f59e0b' : '#16a34a'}
+          emissiveIntensity={1}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* Short cable tail to make it read as a real electronic sensor */}
+      <mesh position={[0, 0.012, -0.055]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.004, 0.004, 0.05, 8]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.8} />
+      </mesh>
+    </group>
+  )
+}
+
+function DialysateLeakBolus({
+  path,
+  flowRate,
+  isLeaking,
+  isDetected,
+  detectorT,
+  onDetectorHit,
+}) {
+  const bolusRef = useRef(null)
+  const progressRef = useRef(0)
+  const isHitRef = useRef(false)
+
+  useFrame((_, delta) => {
+    if (!bolusRef.current) return
+
+    if (isLeaking && !isDetected) {
+      const speed = Math.max(0.12, flowRate / 2600)
+      progressRef.current = Math.min(detectorT, progressRef.current + speed * delta)
+      const pos = path.getPoint(progressRef.current)
+      bolusRef.current.position.copy(pos)
+      bolusRef.current.visible = true
+
+      if (progressRef.current >= detectorT && !isHitRef.current) {
+        isHitRef.current = true
+        onDetectorHit?.()
+      }
+    } else if (isDetected) {
+      const pos = path.getPoint(detectorT)
+      bolusRef.current.position.copy(pos)
+      bolusRef.current.visible = true
+    } else {
+      bolusRef.current.visible = false
+      progressRef.current = 0
+      isHitRef.current = false
+    }
+  })
+
+  return (
+    <mesh ref={bolusRef} visible={false}>
+      <sphereGeometry args={[0.038, 12, 12]} />
+      <meshStandardMaterial
+        color="#f87171"
+        emissive="#dc2626"
+        emissiveIntensity={1.25}
+        transparent
+        opacity={0.95}
+        toneMapped={false}
+      />
+    </mesh>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /*  Circuit curve construction                                         */
 /* ------------------------------------------------------------------ */
@@ -759,9 +1059,6 @@ function buildCircuitPath({
   const dialyzerColumn = new THREE.LineCurve3(v(dialyzerIn), v(dialyzerOut))
 
   // ----- 5) Dialyzer -> Air-trap top (short arc above both caps) ----------
-  // Dialyzer top at (0.4, 0.78, -0.53); air-trap top at (1.5, 0.49, -0.67).
-  // Arc lifts to y~0.95 (clear of both caps) and stays well below the
-  // cabinet display panel (which starts at y=1.05).
   const dialyzerToAirTrap = new THREE.CatmullRomCurve3(
     [
       v(dialyzerOut),
@@ -776,20 +1073,15 @@ function buildCircuitPath({
   // ----- 6) Air-trap internal column (straight vertical) ------------------
   const airTrapColumn = new THREE.LineCurve3(v(airTrapTop), v(airTrapBottom))
 
-  // ----- 7) Air-trap bottom -> hand venous (rises HIGH over the arm) ----
-  // The line rises out of the air trap, clears the table top, then arches
-  // WELL ABOVE the forearm (y >= 0.3) so it never cuts through the arm
-  // volume on its way to the venous port. Final descent drops onto the
-  // wrist port from straight above, entering the skin cleanly. Control
-  // point c3 is the air-detector clamp mount (see CLAMP_TRANSFORM).
+  // ----- 7) Air-trap bottom -> hand venous -------------------------------
   const airTrapToHand = new THREE.CatmullRomCurve3(
     [
-      v(airTrapBottom),                                  // (1.1, -1.09, -0.67)
-      v([1.3, -0.85, -0.3]),                             // c1: rise + come forward
-      v([1.7, -0.05, 0.5]),                              // c2: above table top, clearing forward
-      v([2.7, 0.5, 1.0]),                                // c3: HIGH above arm -- CLAMP location
-      v([3.7, 0.3, 1.3]),                                // c4: still above arm, approaching port
-      v(venousPort),                                     // (4.05, -0.16, 1.35) -- in arm
+      v(airTrapBottom),
+      v([1.3, -0.85, -0.3]),
+      v([1.7, -0.05, 0.5]),
+      v([2.7, 0.5, 1.0]),
+      v([3.7, 0.3, 1.3]),
+      v(venousPort),
     ],
     false,
     'centripetal',
@@ -810,41 +1102,125 @@ function buildCircuitPath({
 /*  Decorative static dialysate tube                                   */
 /* ------------------------------------------------------------------ */
 
-/**
- * A simple cyan tube connecting two points (no animated particles).
- * Used to draw the dialysate inflow / outflow lines from the dialyzer's
- * side ports back to the machine cabinet so the closed dialysate loop
- * is visible in the scene.
- */
-function DialysateTube({ from, to, color = "#22d3ee", emissive = "#0e7490" }) {
-  const geom = useMemo(() => {
-    const curve = new THREE.CatmullRomCurve3(
-      [
-        new THREE.Vector3(...from),
-        new THREE.Vector3(
-          (from[0] + to[0]) / 2 + 0.1,
-          (from[1] + to[1]) / 2,
-          (from[2] + to[2]) / 2 - 0.15,
-        ),
-        new THREE.Vector3(...to),
-      ],
-      false,
-      'centripetal',
-    )
-    return new THREE.TubeGeometry(curve, 40, 0.04, 12, false)
-  }, [from, to])
+function DialysateTube({
+  points,
+  flowRate = 600,
+  color = '#22d3ee',
+  emissive = '#0e7490',
+  particleColor = '#cffafe',
+  opacity = 0.45,
+  radius = 0.035,
+  particleRadius = 0.017,
+  particles = 12,
+  markers = 3,
+}) {
+  const particleRefs = useRef([])
+  const offsetRef = useRef(0)
+
+  const curve = useMemo(
+    () =>
+      new THREE.CatmullRomCurve3(
+        points.map((point) => new THREE.Vector3(...point)),
+        false,
+        'centripetal',
+      ),
+    [points],
+  )
+
+  const geom = useMemo(
+    () => new THREE.TubeGeometry(curve, 72, radius, 12, false),
+    [curve, radius],
+  )
+
+  const markerTransforms = useMemo(
+    () =>
+      Array.from({ length: markers }, (_, i) => {
+        const t = (i + 0.45) / (markers + 0.2)
+        const pos = curve.getPoint(t)
+        const tangent = curve.getTangent(t).normalize()
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          tangent,
+        )
+        const euler = new THREE.Euler().setFromQuaternion(quaternion)
+        return {
+          position: pos.toArray(),
+          rotation: [euler.x, euler.y, euler.z],
+        }
+      }),
+    [curve, markers],
+  )
+
+  useFrame((_, delta) => {
+    const speed = flowRate > 0 ? Math.max(0.02, flowRate / 12000) : 0
+    offsetRef.current = (offsetRef.current + speed * delta) % 1
+
+    for (let i = 0; i < particles; i++) {
+      const mesh = particleRefs.current[i]
+      if (!mesh) continue
+      if (flowRate <= 0) {
+        mesh.visible = false
+        continue
+      }
+      const t = ((i / particles) + offsetRef.current) % 1
+      const point = curve.getPoint(t)
+      mesh.visible = true
+      mesh.position.copy(point)
+    }
+  })
 
   return (
-    <mesh geometry={geom} castShadow raycast={() => null}>
-      <meshStandardMaterial
-        color={color}
-        roughness={0.35}
-        metalness={0.1}
+    <group>
+      <mesh geometry={geom} castShadow raycast={() => null}>
+        <meshStandardMaterial
+          color={color}
+          roughness={0.3}
+          metalness={0.08}
         emissive={emissive}
-        emissiveIntensity={0.25}
+        emissiveIntensity={flowRate > 0 ? 0.6 : 0.12}
         transparent
-        opacity={0.8}
+        opacity={opacity}
       />
-    </mesh>
+      </mesh>
+
+      {markerTransforms.map((marker, i) => (
+        <mesh
+          key={`marker-${i}`}
+          position={marker.position}
+          rotation={marker.rotation}
+          raycast={() => null}
+        >
+          <coneGeometry args={[radius * 1.35, radius * 3.6, 10]} />
+          <meshStandardMaterial
+            color={particleColor}
+            emissive={particleColor}
+            emissiveIntensity={0.85}
+            transparent
+            opacity={0.65}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+
+      {Array.from({ length: particles }).map((_, i) => (
+        <mesh
+          key={i}
+          ref={(el) => {
+            particleRefs.current[i] = el
+          }}
+          raycast={() => null}
+        >
+          <sphereGeometry args={[particleRadius, 8, 8]} />
+          <meshStandardMaterial
+            color={particleColor}
+            emissive={particleColor}
+            emissiveIntensity={1.25}
+            roughness={0.18}
+            metalness={0.05}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </group>
   )
 }
