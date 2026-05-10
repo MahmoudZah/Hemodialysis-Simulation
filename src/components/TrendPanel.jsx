@@ -28,18 +28,18 @@ export default function TrendPanel({ history }) {
 
   return (
     <>
-      {/* Floating toggle button */}
+      {/* Floating toggle button - Top center to clear side space */}
       <button
         type="button"
         onClick={() => setPanelOpen((p) => !p)}
-        className={`pointer-events-auto fixed left-4 top-1/2 z-30 -translate-y-1/2 rounded-full p-3 text-lg shadow-xl backdrop-blur transition-all duration-300 ${
+        className={`pointer-events-auto fixed left-1/2 top-14 -translate-x-1/2 z-30 rounded-full px-4 py-1.5 text-xs font-bold shadow-xl backdrop-blur transition-all duration-300 border border-white/10 ${
           panelOpen
             ? 'bg-med-accent/20 text-med-accent ring-1 ring-med-accent/40'
             : 'bg-med-panel/80 text-white/70 hover:bg-med-panel hover:text-white'
         }`}
         title={panelOpen ? 'Hide trend graphs' : 'Show trend graphs'}
       >
-        📊
+        <span className="mr-2">📊</span> VIEW LIVE TRENDS
       </button>
 
       {/* Slide-in panel */}

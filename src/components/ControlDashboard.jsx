@@ -15,7 +15,10 @@ export default function ControlDashboard({
   setParam,
   triggerAir,
   triggerLeak,
+  toggleClamp,
   resetAlarms,
+  toggleMute,
+  silenceAlarm,
 }) {
   const [panelsOpen, setPanelsOpen] = useState(true)
 
@@ -60,6 +63,28 @@ export default function ControlDashboard({
 
           <button
             type="button"
+            onClick={toggleMute}
+            className={`flex h-9 w-9 items-center justify-center rounded-lg shadow transition ${
+              state.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+            title={state.isMuted ? 'Unmute' : 'Mute'}
+          >
+            {state.isMuted ? '🔇' : '🔊'}
+          </button>
+
+          {state.systemStatus === 'CRITICAL' && !state.isAlarmSilenced && (
+            <button
+              type="button"
+              onClick={silenceAlarm}
+              className="flex items-center gap-2 rounded-lg bg-orange-500/80 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-orange-500"
+              title="Silence current alarm"
+            >
+              🔕 SILENCE
+            </button>
+          )}
+
+          <button
+            type="button"
             onClick={resetAlarms}
             className="rounded-lg bg-med-accent/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow hover:bg-med-accent"
           >
@@ -79,6 +104,12 @@ export default function ControlDashboard({
         {/* Live readouts */}
         <Panel title="LIVE PARAMETERS">
           <Readout label="Blood Flow" value={`${state.bloodFlowRate} mL/min`} />
+          <Readout
+            label="Flow Sensor"
+            value={`${state.bloodFlowRate.toFixed(0)} / ${(state.nominalFlowRate ?? 300).toFixed(0)} mL/min`}
+            sub={state.isOccluded ? '⛔ OCCLUSION' : state.isClamped ? '⚠ CLAMPED' : 'NORMAL'}
+            subColor={state.isOccluded ? 'text-red-400' : state.isClamped ? 'text-amber-400' : 'text-med-good'}
+          />
           <Readout
             label="Pump Speed"
             value={`${(state.bloodFlowRate / 8).toFixed(1)} RPM`}
@@ -159,6 +190,11 @@ export default function ControlDashboard({
             label="Trigger Blood Leak"
             active={state.isLeakDetected}
             onClick={triggerLeak}
+          />
+          <TriggerButton
+            label={state.isClamped ? '🔓 Release Clamp' : '⛔ Simulate Occlusion'}
+            active={state.isClamped}
+            onClick={toggleClamp}
           />
           <TriggerButton
             label="Force Temp Fault (43 °C)"

@@ -1,7 +1,8 @@
-import { Suspense, useMemo } from 'react'
+import { Suspense, useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Canvas } from '@react-three/fiber'
-import { Environment, OrbitControls, PerspectiveCamera } from '@react-three/drei'
+import { Environment, OrbitControls, PerspectiveCamera, Html } from '@react-three/drei'
 import PumpModel, {
   PUMP_INLET_OFFSET,
   PUMP_OUTLET_OFFSET,
@@ -27,6 +28,7 @@ import AirTrap, {
 } from './AirTrap.jsx'
 import AirDetectorClamp from './AirDetectorClamp.jsx'
 import PressureMonitor from './PressureMonitor.jsx'
+import FlowSensor from './FlowSensor.jsx'
 
 /**
  * Closed blood circuit:
@@ -78,15 +80,25 @@ const PUMP_LOOP_CENTER = [
   PUMP_POSITION[2] + PUMP_TUBE_FACE_OFFSET_Z,
 ]
 
-// Inline air-detector clamp placement. The position MUST equal the c3
-// control point of the airtrap->hand sub-curve (so the tube actually
-// passes through the clamp's channel). The rotation aligns the clamp's
-// local +X (tube axis) with the curve tangent at that point.
-const CLAMP_TRANSFORM = (() => {
-  const pos = new THREE.Vector3(2.7, 0.5, 1.0) // <-- == airtrap->hand c3
-  // Tangent ~= (c4 - c2) normalised, with c4=(3.7,0.3,1.3), c2=(1.7,-0.05,0.5).
-  // (c4-c2) = (2.0, 0.35, 0.8); |v| = sqrt(4 + 0.1225 + 0.64) = sqrt(4.7625) = 2.182
-  const tangent = new THREE.Vector3(0.917, 0.160, 0.367).normalize()
+// To guarantee perfect placement on the tube, we compute the clamp and flow sensor
+// transforms directly from a static version of the venous return curve.
+const staticVenousCurve = new THREE.CatmullRomCurve3(
+  [
+    new THREE.Vector3(1.1, -1.09, -0.67),   // airTrapBottom
+    new THREE.Vector3(1.3, -0.85, -0.3),    // c1
+    new THREE.Vector3(1.7, -0.05, 0.5),     // c2
+    new THREE.Vector3(2.7, 0.5, 1.0),       // c3
+    new THREE.Vector3(3.7, 0.3, 1.3),       // c4
+    new THREE.Vector3(4.05, -0.16, 1.35),   // venousPort
+  ],
+  false,
+  'centripetal',
+)
+
+function getCurveTransform(t) {
+  const pos = staticVenousCurve.getPoint(t)
+  const tangent = staticVenousCurve.getTangent(t).normalize()
+  // Align object's +X axis with the curve tangent
   const q = new THREE.Quaternion().setFromUnitVectors(
     new THREE.Vector3(1, 0, 0),
     tangent,
@@ -96,7 +108,13 @@ const CLAMP_TRANSFORM = (() => {
     position: pos.toArray(),
     rotation: [e.x, e.y, e.z],
   }
-})()
+}
+
+// Ultrasonic Air Detector Clamp — at t=0.55 along the venous line
+const CLAMP_TRANSFORM = getCurveTransform(0.55)
+
+// Flow Sensor — right next to the clamp at t=0.62, perfectly inline
+const FLOW_SENSOR_TRANSFORM = getCurveTransform(0.64)
 
 // ----- Pressure monitor placements ---------------------------------------
 // Now panel-mounted INSTRUMENTS, integrated into the cabinet's front face
@@ -115,9 +133,16 @@ export default function MachineCanvas({
   bloodViscosity = 3.5,
   isLeakDetected = false,
   triggerLeak,
+  isClamped = false,
+  toggleClamp,
   isAirDetected = false,
+  isBubbleActive = false,
+  isOccluded = false,
   triggerAir,
+  confirmAirAlarm,
   onLearnMore,
+  chemistry,
+  alarmActive = false,
 }) {
   const arterialPort = arterialPortWorld(HAND_POSITION)
   const venousPort = venousPortWorld(HAND_POSITION)
@@ -153,8 +178,8 @@ export default function MachineCanvas({
   const flowRatio = bloodFlowRate / 300
   const viscRatio = bloodViscosity / 3.5
   const arterialPressure = -100 - flowRatio * viscRatio * 100
-  const dialyzerInflowPressure = 50 + flowRatio * viscRatio * 200
-  const venousPressureLive = 50 + flowRatio * viscRatio * 100
+  const dialyzerInflowPressure = (isClamped ? 550 : 50) + flowRatio * viscRatio * 200
+  const venousPressureLive = (isClamped ? 420 : 50) + flowRatio * viscRatio * 100
 
   const circuitPath = useMemo(
     () =>
@@ -204,7 +229,7 @@ export default function MachineCanvas({
       <Room />
 
       {/* ===== MACHINE CABINET (the pump is mounted on this) ===== */}
-      <MachineCabinet />
+      <MachineCabinet alarmActive={alarmActive} />
 
       {/* ===== PATIENT BEDSIDE TABLE / ARMREST ===== */}
       <BedsideTable position={[3.6, -1.275, 1.3]} />
@@ -218,68 +243,90 @@ export default function MachineCanvas({
         radius={0.05}
         particles={26}
         tubularSegments={320}
+        isClamped={isClamped}
+        toggleClamp={toggleClamp}
       />
 
       {/* ===== BLOOD PUMP ===== */}
       <PumpModel bloodFlowRate={bloodFlowRate} position={PUMP_POSITION} />
 
-      {/* ===== DIALYZER (artificial kidney) =====
-          Mounted between the pump and the patient. Blood flows up through
-          the hollow fibres; dialysate flows around them in the opposite
-          direction. Click the dialyzer to simulate a membrane rupture:
-          the dialysate tints pink, the BLD trips (isLeakDetected=true),
-          the safety monitor zeroes blood-flow and raises CRITICAL. */}
-      <Dialyzer
-        position={DIALYZER_POSITION}
-        active={isLeakDetected}
-        onPuncture={triggerLeak}
-        onLearnMore={onLearnMore}
-      />
+      {/* ===== DIALYZER (artificial kidney) ===== */}
+      {/* ===== DIALYZER (artificial kidney) ===== */}
+      <group>
+        <Dialyzer
+          position={DIALYZER_POSITION}
+          active={isLeakDetected}
+          onPuncture={triggerLeak}
+          onLearnMore={onLearnMore}
+        />
+        <ComponentCard 
+          position={[DIALYZER_POSITION[0], DIALYZER_POSITION[1] + 0.8, DIALYZER_POSITION[2]]}
+          title="Dialyzer (Artificial Kidney)"
+          description="A bundle of thousands of hollow fibers where blood and dialysate exchange waste products via diffusion."
+        />
+      </group>
 
-      {/* ===== Decorative dialysate inflow / outflow tubes =====
-          Now that the dialyzer's back is flush with the cabinet face, the
-          dialysate quick-connects can terminate directly at the cabinet
-          surface a short distance from the side ports -- no more long
-          loops that crossed the pump area. */}
       <DialysateTube
         from={dialysateIn}
-        to={[
-          DIALYZER_POSITION[0] + 0.55,
-          DIALYZER_POSITION[1] + 0.6,
-          CABINET_FRONT_Z,
-        ]}
+        to={[DIALYZER_POSITION[0] + 0.55, DIALYZER_POSITION[1] + 0.6, CABINET_FRONT_Z]}
       />
+      
+      {/* Waste Dialysate Outflow -- Tints amber as urea is removed */}
       <DialysateTube
         from={dialysateOut}
-        to={[
-          DIALYZER_POSITION[0] + 0.55,
-          DIALYZER_POSITION[1] - 0.6,
-          CABINET_FRONT_Z,
-        ]}
+        to={[DIALYZER_POSITION[0] + 0.55, DIALYZER_POSITION[1] - 0.6, CABINET_FRONT_Z]}
+        color={chemistry?.urea < 95 ? "#fde68a" : "#22d3ee"}
+        emissive={chemistry?.urea < 95 ? "#b45309" : "#0e7490"}
       />
 
-      {/* ===== AIR TRAP / DRIP CHAMBER (passive) =====
-          Sits on the venous return line between the dialyzer and the
-          inline air-detector clamp. Bubbles rise to the meniscus and pop;
-          air detection itself is now handled by the clamp downstream. */}
-      <AirTrap
-        position={AIR_TRAP_POSITION}
-        active={isAirDetected}
+      {/* ===== AIR TRAP / DRIP CHAMBER ===== */}
+      <group>
+        <AirTrap
+          position={AIR_TRAP_POSITION}
+          active={isAirDetected}
+          flowRate={bloodFlowRate}
+          onLearnMore={onLearnMore}
+        />
+        <ComponentCard 
+          position={[AIR_TRAP_POSITION[0], AIR_TRAP_POSITION[1] + 0.6, AIR_TRAP_POSITION[2]]}
+          title="Air Trap / Drip Chamber"
+          description="Removes any air bubbles from the blood return line before it enters the patient."
+        />
+      </group>
+
+      {/* ===== INLINE AIR-DETECTOR CLAMP ===== */}
+      <group>
+        <AirDetectorClamp
+          position={CLAMP_TRANSFORM.position}
+          rotation={CLAMP_TRANSFORM.rotation}
+          active={isAirDetected}
+          onTrigger={triggerAir}
+          onLearnMore={onLearnMore}
+        />
+        <ComponentCard 
+          position={[CLAMP_TRANSFORM.position[0], CLAMP_TRANSFORM.position[1] + 0.35, CLAMP_TRANSFORM.position[2]]}
+          title="Ultrasonic Air Detector"
+          description="A final safety sensor that stops the machine if even a tiny air bubble passes through."
+        />
+      </group>
+
+      {/* ===== FLOW SENSOR (YF-S201 style) ===== */}
+      {/* Placed on the venous return line — detects occlusion when flow drops >50% */}
+      <FlowSensor
+        position={FLOW_SENSOR_TRANSFORM.position}
+        rotation={FLOW_SENSOR_TRANSFORM.rotation}
         flowRate={bloodFlowRate}
-        onLearnMore={onLearnMore}
+        nominalFlow={300}
+        active={isOccluded}
       />
 
-      {/* ===== INLINE AIR-DETECTOR CLAMP =====
-          Ultrasonic bubble detector clipped onto the venous tube AFTER the
-          air trap. Position + rotation are placed exactly on the c2 control
-          point of the airtrap->hand curve so the tube appears to thread
-          through the clamp's channel. Click to inject an air bolus. */}
-      <AirDetectorClamp
-        position={CLAMP_TRANSFORM.position}
-        rotation={CLAMP_TRANSFORM.rotation}
-        active={isAirDetected}
-        onTrigger={triggerAir}
-        onLearnMore={onLearnMore}
+      {/* Animated Air Bubble Bolus */}
+      <AirBubble 
+        path={circuitPath} 
+        bloodFlowRate={bloodFlowRate}
+        isBubbleActive={isBubbleActive}
+        isAirDetected={isAirDetected}
+        onDetectorHit={confirmAirAlarm} 
       />
 
       {/* ===== DIGITAL PRESSURE MONITORS =====
@@ -332,6 +379,140 @@ export default function MachineCanvas({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Animated Air Bubble                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Renders a visual air bubble that travels through the venous tube.
+ * It monitors its own position and calls onDetectorHit when it passes
+ * through the clamp's detection zone.
+ */
+function AirBubble({ path, bloodFlowRate, isBubbleActive, isAirDetected, onDetectorHit }) {
+  const bubbleRef = useRef()
+  const progressRef = useRef(0)
+  const isHitRef = useRef(false)
+
+  // The venous line starts at the Air Trap Bottom.
+  // In our 7-segment path, the venous line is the last segment.
+  const venousRange = useMemo(() => {
+    const lengths = path.getCurveLengths()
+    const totalLength = lengths[lengths.length - 1]
+    const startLength = lengths[lengths.length - 2]
+    return {
+      start: startLength / totalLength,
+      end: 1.0
+    }
+  }, [path])
+
+  // Find the exact 't' for the clamp position (c3 of segment 7).
+  const detectorT = useMemo(() => {
+    const clampPos = new THREE.Vector3(2.7, 0.5, 1.0)
+    let bestT = venousRange.start
+    let minDist = Infinity
+    // Sample the venous segment to find the closest point to the clamp box
+    for (let i = 0; i <= 100; i++) {
+      const t = venousRange.start + (i / 100) * (venousRange.end - venousRange.start)
+      const p = path.getPoint(t)
+      const d = p.distanceTo(clampPos)
+      if (d < minDist) {
+        minDist = d
+        bestT = t
+      }
+    }
+    return bestT
+  }, [path, venousRange])
+
+  useFrame((state, delta) => {
+    if (!bubbleRef.current) return
+
+    if (isBubbleActive && !isAirDetected) {
+      // Move bubble at speed proportional to flow
+      const speed = bloodFlowRate / 4000
+      progressRef.current += speed * delta
+
+      const currentT = venousRange.start + progressRef.current
+      
+      if (currentT >= venousRange.end) {
+        progressRef.current = 0
+        isHitRef.current = false
+      }
+
+      const pos = path.getPoint(Math.min(currentT, 0.999))
+      bubbleRef.current.position.copy(pos)
+      bubbleRef.current.visible = true
+
+      // Detection logic: Hit the clamp!
+      if (currentT >= detectorT && !isHitRef.current) {
+        isHitRef.current = true
+        onDetectorHit()
+      }
+    } else if (isAirDetected) {
+      // Stay at the detector position when machine stops
+      const pos = path.getPoint(detectorT)
+      bubbleRef.current.position.copy(pos)
+      bubbleRef.current.visible = true
+    } else {
+      bubbleRef.current.visible = false
+      progressRef.current = 0
+      isHitRef.current = false
+    }
+  })
+
+  return (
+    <mesh ref={bubbleRef} visible={false}>
+      <sphereGeometry args={[0.07, 16, 16]} />
+      <meshStandardMaterial 
+        color="#ffffff" 
+        emissive="#ffffff" 
+        emissiveIntensity={0.5}
+        transparent 
+        opacity={0.8}
+        roughness={0}
+        metalness={0.5}
+      />
+    </mesh>
+  )
+}
+
+/**
+ * Educational info card — a tiny glowing dot that reveals a label on hover.
+ * Uses a real (visible) tiny mesh so it doesn't secretly eat pointer events.
+ */
+function ComponentCard({ position, title, description }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <group position={position}>
+      {/* Small glowing dot as the hover target */}
+      <mesh
+        onPointerOver={(e) => { e.stopPropagation(); setHovered(true) }}
+        onPointerOut={() => setHovered(false)}
+      >
+        <sphereGeometry args={[0.04, 8, 8]} />
+        <meshStandardMaterial
+          color="#22d3ee"
+          emissive="#22d3ee"
+          emissiveIntensity={hovered ? 3 : 1.2}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {hovered && (
+        <Html center distanceFactor={8} zIndexRange={[100, 0]}>
+          <div className="pointer-events-none w-48 rounded-lg bg-slate-900/90 p-3 text-white shadow-xl backdrop-blur-sm border border-cyan-400/40">
+            <h4 className="mb-1 text-[10px] font-black uppercase tracking-tighter text-cyan-300">
+              {title}
+            </h4>
+            <p className="text-[9px] leading-snug text-slate-200">
+              {description}
+            </p>
+          </div>
+        </Html>
+      )}
+    </group>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Environment                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -373,7 +554,26 @@ function Room() {
   )
 }
 
-function MachineCabinet() {
+function MachineCabinet({ alarmActive }) {
+  const beaconMatRef = useRef()
+
+  useFrame(({ clock }) => {
+    if (beaconMatRef.current) {
+      if (alarmActive) {
+        // Fast pulse for alarm
+        const pulse = 2.5 + Math.sin(clock.elapsedTime * 10) * 1.5
+        beaconMatRef.current.emissiveIntensity = pulse
+        beaconMatRef.current.color.set('#ef4444')
+        beaconMatRef.current.emissive.set('#dc2626')
+      } else {
+        // Steady glow for normal
+        beaconMatRef.current.emissiveIntensity = 1.0
+        beaconMatRef.current.color.set('#22c55e')
+        beaconMatRef.current.emissive.set('#16a34a')
+      }
+    }
+  })
+
   return (
     <group position={[0, 0.5, -1.25]}>
       {/* Main cabinet body */}
@@ -417,6 +617,28 @@ function MachineCabinet() {
         <boxGeometry args={[2.5, 0.25, 0.05]} />
         <meshStandardMaterial color="#1e293b" roughness={0.8} />
       </mesh>
+
+      {/* Alarm Beacon on top */}
+      <group position={[0, 2.6, 0]}>
+        {/* Base */}
+        <mesh position={[0, -0.05, 0]}>
+          <cylinderGeometry args={[0.15, 0.15, 0.1, 16]} />
+          <meshStandardMaterial color="#334155" roughness={0.8} />
+        </mesh>
+        {/* Bulb */}
+        <mesh position={[0, 0.15, 0]}>
+          <cylinderGeometry args={[0.12, 0.12, 0.3, 16]} />
+          <meshStandardMaterial 
+            ref={beaconMatRef}
+            color="#22c55e"
+            emissive="#16a34a"
+            emissiveIntensity={1.0}
+            transparent
+            opacity={0.9}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
     </group>
   )
 }
@@ -594,7 +816,7 @@ function buildCircuitPath({
  * side ports back to the machine cabinet so the closed dialysate loop
  * is visible in the scene.
  */
-function DialysateTube({ from, to }) {
+function DialysateTube({ from, to, color = "#22d3ee", emissive = "#0e7490" }) {
   const geom = useMemo(() => {
     const curve = new THREE.CatmullRomCurve3(
       [
@@ -615,11 +837,13 @@ function DialysateTube({ from, to }) {
   return (
     <mesh geometry={geom} castShadow raycast={() => null}>
       <meshStandardMaterial
-        color="#22d3ee"
+        color={color}
         roughness={0.35}
         metalness={0.1}
-        emissive="#0e7490"
+        emissive={emissive}
         emissiveIntensity={0.25}
+        transparent
+        opacity={0.8}
       />
     </mesh>
   )
