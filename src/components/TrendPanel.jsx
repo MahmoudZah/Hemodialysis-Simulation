@@ -39,7 +39,7 @@ export default function TrendPanel({ history }) {
         }`}
         title={panelOpen ? 'Hide trend graphs' : 'Show trend graphs'}
       >
-        <span className="mr-2">📊</span> VIEW LIVE TRENDS
+        VIEW LIVE TRENDS
       </button>
 
       {/* Slide-in panel */}

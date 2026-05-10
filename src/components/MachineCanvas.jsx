@@ -721,8 +721,8 @@ function DialysateSubsystem({
   const freshSupplyPoints = useMemo(
     () => ([
       DIALYSATE_SOURCE_POSITION,
-      [-0.92, -1.18, CABINET_FRONT_Z + 0.28],
-      [-0.46, -1.02, CABINET_FRONT_Z + 0.18],
+      [-0.92, -1.18, CABINET_FRONT_Z + 0.35],
+      [-0.46, -1.02, CABINET_FRONT_Z + 0.40],
       dialysateIn,
     ]),
     [dialysateIn],
@@ -766,6 +766,7 @@ function DialysateSubsystem({
         particleRadius={0.019}
         markers={4}
         opacity={0.36}
+        reverse={true}
       />
       <DialysateManifold
         position={DIALYSATE_DRAIN_POSITION}
@@ -783,6 +784,7 @@ function DialysateSubsystem({
         particleRadius={0.019}
         markers={4}
         opacity={0.5}
+        reverse={true}
       />
 
       <BloodLeakSensor
@@ -1113,6 +1115,7 @@ function DialysateTube({
   particleRadius = 0.017,
   particles = 12,
   markers = 3,
+  reverse = false,
 }) {
   const particleRefs = useRef([])
   const offsetRef = useRef(0)
@@ -1162,7 +1165,9 @@ function DialysateTube({
         mesh.visible = false
         continue
       }
-      const t = ((i / particles) + offsetRef.current) % 1
+      // reverse=true: particles travel end→start (top→down in dialysate supply)
+      const rawT = ((i / particles) + offsetRef.current) % 1
+      const t = reverse ? 1 - rawT : rawT
       const point = curve.getPoint(t)
       mesh.visible = true
       mesh.position.copy(point)

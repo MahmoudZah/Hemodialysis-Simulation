@@ -168,7 +168,8 @@ export default function Dialyzer({
         return
       }
       const travel = ((i / dialysateParticles.length) + dialysateOffsetRef.current) % 1
-      const y = -HEIGHT / 2 + 0.08 + travel * (HEIGHT - 0.16)
+      // Dialysate flows top → bottom (countercurrent to blood)
+      const y = HEIGHT / 2 - 0.08 - travel * (HEIGHT - 0.16)
       const angle = particle.angle + travel * Math.PI * 1.6
       const radius = MEMBRANE_RADIUS + 0.038 + Math.sin(angle * 2) * 0.012
       mesh.visible = true

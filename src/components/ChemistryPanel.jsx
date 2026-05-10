@@ -127,7 +127,7 @@ export default function ChemistryPanel({ chemistry }) {
               These are <em>clinical ranges</em>; % reduction evaluates adequacy.
             </p>
             <p className="text-[8px] leading-snug text-slate-400">
-              📌 <span className="text-amber-400 font-semibold italic">URR Target: ≥65% drop</span>
+              <span className="text-amber-400 font-semibold italic">URR Target: ≥65% drop</span>
             </p>
           </div>
         </div>
